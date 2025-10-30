@@ -14,9 +14,9 @@ payload_groups = defaultdict(bytearray)
 
 def save_as_wav(payload, filename):
     with wave.open(filename, "wb") as wav_file:
-        wav_file.setnchannels(1)  # Mono audio
-        wav_file.setsampwidth(2)  # 16-bit samples
-        wav_file.setframerate(8000)  # 8 kHz sample rate
+        wav_file.setnchannels(1)  # Mono audio (G.711 is mono)
+        wav_file.setsampwidth(1)  # 8-bit samples (G.711 uses 8-bit PCM)
+        wav_file.setframerate(8000)  # 8 kHz sample rate (G.711 standard)
         wav_file.writeframes(payload)
 
 def detect_codec(payload):
@@ -38,6 +38,13 @@ def detect_codec(payload):
     else:
         return "Unknown"
 
+def is_encrypted(payload):
+    # Check if the payload appears to be encrypted (heuristic)
+    # Encrypted payloads often have high entropy and no recognizable patterns
+    if len(payload) > 0 and all(0x00 <= byte <= 0xFF for byte in payload):
+        return True
+    return False
+
 def process_packet(packet):
     if UDP in packet:
         src_ip = packet[IP].src
@@ -52,6 +59,13 @@ def process_packet(packet):
         payload = bytes(packet[UDP].payload)
         print(f"Payload Length: {len(payload)} bytes")
         print(f"Payload Type: {type(payload)}")
+        
+        # Check if the payload is encrypted
+        if is_encrypted(payload):
+            print("Warning: Encrypted RTP packet detected. Logging for analysis.")
+            with open("encrypted_packets.log", "a") as log_file:
+                log_file.write(f"Encrypted packet from {src_ip}:{src_port} to {packet[IP].dst}:{packet[UDP].dport}\n")
+            return
         
         # Detect codec
         codec = detect_codec(payload)
